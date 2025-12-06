@@ -30,8 +30,8 @@ func NewDB(cfg *config.Config) (*DB, error) {
 func (db *DB) SaveIdea(idea *Idea) error {
 	query := `
         INSERT INTO ideas (reddit_id, title, content, author, subreddit, url, score, 
-                          reddit_created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                          reddit_created_at, categories)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT (reddit_id) 
         DO UPDATE SET 
             title = excluded.title,
@@ -43,6 +43,7 @@ func (db *DB) SaveIdea(idea *Idea) error {
 		idea.RedditID, idea.Title, idea.Content, idea.Author,
 		idea.Subreddit, idea.URL, idea.Score,
 		idea.RedditCreatedAt.Format("2006-01-02 15:04:05"),
+		idea.Categories,
 	).Scan(&idea.ID)
 }
 

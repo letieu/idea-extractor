@@ -14,4 +14,5 @@ type Idea struct {
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
 	RedditCreatedAt time.Time `json:"reddit_created_at"`
+	Categories      string    `json:"categories"`
 }

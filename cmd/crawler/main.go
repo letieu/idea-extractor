@@ -42,6 +42,16 @@ func main() {
 		}
 
 		for _, post := range posts {
+			existed, err := db.IdeaExists(post.ID)
+
+			if err != nil {
+				log.Printf("Fail to check idea existed %v", err)
+			}
+
+			if existed == true {
+				continue
+			}
+
 			log.Printf("P %+v", post.Title)
 			text := post.Title + "\n" + post.Content
 			result, err := analyzer.ExtractIdea(ctx, text)
@@ -49,7 +59,6 @@ func main() {
 				log.Printf("Fail to analyze the idea %v", err)
 			}
 
-			log.Printf("%+v", result.IsMeta)
 			if result.IsMeta {
 				log.Printf("Is meta %s", post.Title)
 				continue
@@ -64,17 +73,10 @@ func main() {
 					URL:             post.URL,
 					RedditCreatedAt: post.CreatedAt,
 
-					Title:   result.Summarize,
-					Content: result.Content,
-					Score:   result.Score,
-				}
-				existed, err := db.IdeaExists(post.ID)
-				if err != nil {
-					log.Printf("Fail to check idea existed %v", err)
-				}
-
-				if existed == false {
-					continue
+					Title:      result.Summarize,
+					Content:    result.Content,
+					Score:      result.Score,
+					Categories: result.Categories,
 				}
 
 				err = db.SaveIdea(&idea)
@@ -88,4 +90,6 @@ func main() {
 
 		time.Sleep(20 * time.Second)
 	}
+
+	log.Println("Completed")
 }
