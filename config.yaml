@@ -1,0 +1,30 @@
+reddit:
+  client_id: ${REDDIT_CLIENT_ID}
+  client_secret: ${REDDIT_CLIENT_SECRET}
+
+gemini:
+  api_key: AIzaSyBpIKxqxbBC8y4cedwKfZiDcRmhwr2lwSQ
+
+database:
+  type: sqlite
+  dbname: ../idea-hub/data/app.db
+
+crawler:
+  subreddits:
+    - SideProject
+    # - Entrepreneur
+    # - startups
+    # - Business_Ideas
+    # - roastmystartup
+    # - buildinpublic
+  post_limit: 25
+  rate_limit_secs: 2
+  sharing_keywords:
+    - "share what you're building"
+    - "share what you are building"
+    - "show off your project"
+    - "what are you working on"
+    - "showcase"
+    - "share your startup"
+    - "show your side project"
+    - "monthly self promotion"
