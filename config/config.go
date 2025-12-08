@@ -11,8 +11,9 @@ type Config struct {
 		ClientID     string
 		ClientSecret string
 	}
-	Gemini struct {
+	Mistral struct {
 		APIKey string
+		Model string
 	}
 	Database struct {
 		Host     string
@@ -56,8 +57,9 @@ func Load() (*Config, error) {
 	cfg.Reddit.ClientID = v.GetString("reddit.client_id")
 	cfg.Reddit.ClientSecret = v.GetString("reddit.client_secret")
 
-	// Anthropic config
-	cfg.Gemini.APIKey = v.GetString("gemini.api_key")
+	// Mistral config
+	cfg.Mistral.APIKey = v.GetString("mistral.api_key")
+	cfg.Mistral.Model = v.GetString("mistral.model")
 
 	// Database config
 	cfg.Database.Type = v.GetString("database.type")
@@ -116,8 +118,8 @@ func validate(cfg *Config) error {
 	if cfg.Reddit.ClientSecret == "" {
 		return fmt.Errorf("reddit.client_secret is required")
 	}
-	if cfg.Gemini.APIKey == "" {
-		return fmt.Errorf("gemini.api_key is required")
+	if cfg.Mistral.APIKey == "" {
+		return fmt.Errorf("mistral.api_key is required")
 	}
 	if cfg.Database.DBName == "" {
 		return fmt.Errorf("database.dbname is required")

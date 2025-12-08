@@ -2,8 +2,9 @@ reddit:
   client_id: ${REDDIT_CLIENT_ID}
   client_secret: ${REDDIT_CLIENT_SECRET}
 
-gemini:
-  api_key: AIzaSyBpIKxqxbBC8y4cedwKfZiDcRmhwr2lwSQ
+mistral:
+  api_key: "cRfO3lC8vaQ8rvcyqapOjvFRs5Ntn3xV"
+  model: "mistral-medium-latest"
 
 database:
   type: sqlite
