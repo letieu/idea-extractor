@@ -1,20 +1,21 @@
 package group
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"log"
-	"sort"
-	"strings"
+	"time"
 
 	"github.com/letieu/idea-extractor/config"
+	"github.com/letieu/idea-extractor/internal/analysis"
 	"github.com/letieu/idea-extractor/internal/database"
+	"github.com/letieu/idea-extractor/internal/embeddings"
 )
 
 type Groupper struct {
-	db                  *database.DB
-	config              *config.Config
-	similarityThreshold float32
-	neighborLimit       int
+	db     *database.DB
+	config *config.Config
 }
 
 func New() (*Groupper, error) {
@@ -22,198 +23,151 @@ func New() (*Groupper, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load config: %w", err)
 	}
-
 	db, err := database.NewDB(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("connect database: %w", err)
 	}
-
-	return &Groupper{
-		db:                  db,
-		config:              cfg,
-		similarityThreshold: 0.6,
-		neighborLimit:       100,
-	}, nil
+	return &Groupper{db: db, config: cfg}, nil
 }
 
 func (g *Groupper) Close() error {
 	return g.db.Close()
 }
 
-func (g *Groupper) GroupIdea() error {
-	items, err := g.db.GetUngroupedIdeaItems()
+func (g *Groupper) ProcessSourceItems(ctx context.Context) error {
+	sourceItems, err := g.db.GetUngroupedSourceItems()
 	if err != nil {
-		return fmt.Errorf("get ungrouped items: %w", err)
+		return fmt.Errorf("get ungrouped source items: %w", err)
 	}
-	if len(items) == 0 {
-		log.Println("No new items to group.")
+	if len(sourceItems) == 0 {
+		log.Println("No new source items to process.")
 		return nil
 	}
 
-	log.Printf("Found %d new items to group.", len(items))
+	log.Printf("Found %d new source items to process.", len(sourceItems))
 
-	itemIDs := extractIDs(items)
-
-	embeddings, err := g.db.GetEmbeddings(itemIDs)
-	if err != nil {
-		return fmt.Errorf("get embeddings: %w", err)
-	}
-
-	clustered := make(map[int]bool)
-
-	for _, item := range items {
-		if clustered[item.ID] {
+	for _, item := range sourceItems {
+		var analysisResult analysis.AnalysisResult
+		if err := json.Unmarshal([]byte(item.AnalysisResult), &analysisResult); err != nil {
+			log.Printf("Warning: could not unmarshal analysis result for source item %d: %v", item.ID, err)
 			continue
 		}
 
-		clusterItems, clusterIDs := g.buildCluster(item, items, embeddings, clustered)
-		if len(clusterItems) == 0 {
-			continue
-		}
-
-		idea, err := g.createClusterIdea(clusterItems)
+		problemId, err := g.createProblem(ctx, item.ID, analysisResult.Problem)
 		if err != nil {
-			log.Printf("create idea failed: %v", err)
-			continue
+			log.Printf("Failed to create problem: %v", err)
 		}
 
-		if err := g.db.UpdateIdeaIDForItems(clusterIDs, idea.ID); err != nil {
-			log.Printf("update idea_id failed: %v", err)
+		ideaId, err := g.createIdea(ctx, item.ID, analysisResult.Idea)
+		if err != nil {
+			log.Printf("Failed to create idea: %v", err)
 		}
 
-		log.Printf("Created idea %d for cluster of %d items.", idea.ID, len(clusterIDs))
+		if problemId != "" && ideaId != "" {
+			g.db.CreateProblemIdea(problemId, ideaId)
+		}
+
+		for _, p := range analysisResult.Products {
+			productId, err := g.createProduct(ctx, item.ID, p)
+			if err != nil {
+				log.Printf("Failed to create product: %v", err)
+			}
+			if problemId != "" && productId != "" {
+				g.db.CreateProblemProduct(problemId, productId)
+			}
+		}
 	}
 
-	log.Println("Grouper finished.")
+	log.Println("Grouper finished processing source items.")
 	return nil
 }
 
-func (g *Groupper) buildCluster(
-	item *database.IdeaItem,
-	items []*database.IdeaItem,
-	embeddings map[int][]float32,
-	clustered map[int]bool,
-) ([]*database.IdeaItem, []int) {
-
-	itemEmbedding, ok := embeddings[item.ID]
-	if !ok {
-		log.Printf("Missing embedding for item %d", item.ID)
-		return nil, nil
+func (g *Groupper) createProblem(ctx context.Context, sourcId int, p analysis.AnalysisResultProblem) (string, error) {
+	if p.Score == 0 {
+		return "", nil
 	}
 
-	neighbors, err := g.db.FindSimilarItems(itemEmbedding, g.neighborLimit)
+	const problemSimilarityThreshold float32 = 0.2 // Adjust this value based on desired similarity
+	const maxSimilarProblems = 5                   // Number of similar problems to fetch
+
+	// Generate embedding for the problem
+	embedding, err := embeddings.GenerateEmbedding(ctx, p.Title)
 	if err != nil {
-		log.Printf("FindSimilarItems failed for item %d: %v", item.ID, err)
-		return nil, nil
+		log.Printf("Failed to generate embedding for problem '%s': %v", p.Title, err)
+		return "", err
 	}
 
-	var clusterItems []*database.IdeaItem
-	var clusterIDs []int
-
-	// Add the main item
-	clusterItems = append(clusterItems, item)
-	clusterIDs = append(clusterIDs, item.ID)
-	clustered[item.ID] = true
-
-	for _, n := range neighbors {
-		if 1-n.Distance <= g.similarityThreshold {
-			continue
-		}
-		if clustered[n.ID] {
-			continue
-		}
-
-		if match := findItemByID(items, n.ID); match != nil {
-			clusterItems = append(clusterItems, match)
-			clusterIDs = append(clusterIDs, match.ID)
-			clustered[match.ID] = true
-		}
+	// Check for similar problems
+	similarProblems, err := g.db.FindSimilarProblems(embedding, maxSimilarProblems, problemSimilarityThreshold)
+	if err != nil {
+		log.Printf("Failed to find similar problems for '%s': %v", p.Title, err)
+		// Continue to create new problem if similarity check fails
 	}
 
-	return clusterItems, clusterIDs
+	log.Printf("Found %d similar problems", len(similarProblems))
+
+	var targetProblem *database.Problem
+	if len(similarProblems) > 0 {
+		targetProblem = similarProblems[0] // Use the most similar problem
+		log.Printf("Found similar problem (ID: %s) for '%s'. Linking to existing problem.", targetProblem.ID, p.Title)
+		log.Printf("New: %s, Old: %s", p.Title, targetProblem.Title)
+		log.Println("_____")
+	} else {
+		problem := &database.Problem{
+			Title:       p.Title,
+			Description: p.Description,
+			PainPoints:  p.PainPoints,
+			Score:       p.Score, // Use overall score for now
+			Categories:  p.Categories,
+			CreatedAt:   time.Now(),
+			UpdatedAt:   time.Now(),
+			Slug:        CreateSlug(p.Title),
+		}
+
+		// No similar problem found, create a new one
+		if err := g.db.CreateProblem(problem); err != nil {
+			log.Printf("Failed to create problem: %v", err)
+			return "", err
+		}
+		targetProblem = problem
+		log.Printf("Created new problem (ID: %s): '%s'", targetProblem.ID, problem.Title)
+	}
+
+	g.db.UpdateSourceItemProblemID([]int{sourcId}, targetProblem.ID)
+	return targetProblem.ID, nil
 }
 
-func (g *Groupper) createClusterIdea(clusterItems []*database.IdeaItem) (*database.Idea, error) {
-	totalScore := 0
-	categorySet := make(map[string]bool)
-	referenceSet := make(map[string]bool)
-
-	for _, it := range clusterItems {
-		totalScore += it.Score
-
-		// Parse categories
-		for _, c := range parseUniqueList(it.Categories) {
-			categorySet[c] = true
-		}
-
-		// Parse reference links
-		for _, link := range parseUniqueList(it.ReferenceLinks) {
-			referenceSet[link] = true
-		}
-	}
-
-	avgScore := totalScore / len(clusterItems)
-
-	// Convert sets to sorted lists
-	categories := mapToSortedSlice(categorySet)
-	referenceLinks := mapToSortedSlice(referenceSet)
-
+func (g *Groupper) createIdea(ctx context.Context, sourceId int, analysisResult analysis.AnalysisResultIdea) (string, error) {
 	idea := &database.Idea{
-		Title:          clusterItems[0].Title,
-		Content:        clusterItems[0].Content,
-		Score:          avgScore,
-		Categories:     strings.Join(categories, ", "),
-		ReferenceLinks: strings.Join(referenceLinks, ", "),
+		Title:       analysisResult.Title,
+		Description: analysisResult.Description,
+		Features:    analysisResult.Features,
+		Score:       analysisResult.Score,
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+		Categories:  analysisResult.Categories,
+		Slug:        CreateSlug(analysisResult.Title),
 	}
-
 	if err := g.db.CreateIdea(idea); err != nil {
-		return nil, err
+		return "", err
 	}
-
-	return idea, nil
+	g.db.UpdateSourceItemIdeaID([]int{sourceId}, idea.ID)
+	return idea.ID, nil
 }
 
-func extractIDs(items []*database.IdeaItem) []int {
-	ids := make([]int, 0, len(items))
-	for _, it := range items {
-		ids = append(ids, it.ID)
+func (g *Groupper) createProduct(ctx context.Context, sourceId int, analysisResult analysis.AnalysisResultProduct) (string, error) {
+	product := &database.Product{
+		Name:        analysisResult.Name,
+		Description: analysisResult.Description,
+		URL:         analysisResult.URL,
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+		Categories:  analysisResult.Categories,
+		Slug:        CreateSlug(analysisResult.Name),
 	}
-	return ids
-}
-
-func findItemByID(items []*database.IdeaItem, id int) *database.IdeaItem {
-	for _, it := range items {
-		if it.ID == id {
-			return it
-		}
+	if err := g.db.CreateProduct(product); err != nil {
+		return "", err
 	}
-	return nil
-}
-
-func mapToSortedSlice(m map[string]bool) []string {
-	out := make([]string, 0, len(m))
-	for v := range m {
-		out = append(out, v)
-	}
-	sort.Strings(out)
-	return out
-}
-
-func parseUniqueList(input string) []string {
-	set := make(map[string]bool)
-
-	parts := strings.Split(input, ",")
-	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		if p != "" {
-			set[p] = true
-		}
-	}
-
-	result := make([]string, 0, len(set))
-	for v := range set {
-		result = append(result, v)
-	}
-	sort.Strings(result)
-	return result
+	g.db.UpdateSourceItemProductID([]int{sourceId}, product.ID)
+	return product.ID, nil
 }

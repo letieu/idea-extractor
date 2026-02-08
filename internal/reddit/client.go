@@ -21,6 +21,7 @@ type Post struct {
 	Author    string
 	Subreddit string
 	URL       string
+	Score     int
 	CreatedAt time.Time
 }
 
@@ -41,6 +42,7 @@ type redditPost struct {
 	Subreddit  string  `json:"subreddit"`
 	URL        string  `json:"url"`
 	Permalink  string  `json:"permalink"`
+	Score      int     `json:"score"`
 	CreatedUTC float64 `json:"created_utc"`
 }
 
@@ -88,6 +90,7 @@ func (r *RedditClient) FetchPosts(ctx context.Context, subreddit string, limit i
 			Author:    p.Author,
 			Subreddit: p.Subreddit,
 			URL:       "https://reddit.com" + p.Permalink,
+			Score:     p.Score, // Add this line
 			CreatedAt: time.Unix(int64(p.CreatedUTC), 0),
 		})
 	}
@@ -141,6 +144,7 @@ func (r *RedditClient) FetchComments(ctx context.Context, subreddit, postID stri
 			Author:    p.Author,
 			Subreddit: subreddit,
 			URL:       "https://reddit.com" + p.Permalink,
+			Score:     0, // Set score to 0 for comments, or retrieve if available in redditPost for comments
 			CreatedAt: time.Unix(int64(p.CreatedUTC), 0),
 		})
 	}

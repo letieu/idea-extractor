@@ -2,12 +2,13 @@ package crawl
 
 import (
 	"context"
+	"encoding/json"
 	"log"
-	"strings"
 
 	"github.com/letieu/idea-extractor/config"
 	"github.com/letieu/idea-extractor/internal/analysis"
 	"github.com/letieu/idea-extractor/internal/database"
+	"github.com/letieu/idea-extractor/internal/embeddings"
 	"github.com/letieu/idea-extractor/internal/reddit"
 )
 
@@ -19,8 +20,8 @@ type Crawler struct {
 }
 
 type CrawlerStore interface {
-	IdeaItemExists(source string, sourceItemID string) (bool, error)
-	CreateIdeaItem(item *database.IdeaItem, embedding []float32) error
+	SourceItemExists(source string, sourceItemID string) (bool, error)
+	CreateSourceItem(item *database.SourceItem, embedding []float32, analysisResult string) error
 	Close() error
 }
 
@@ -67,7 +68,7 @@ func (c *Crawler) CrawlAll(ctx context.Context) {
 }
 
 func (c *Crawler) CrawlSubreddit(ctx context.Context, subreddit string) error {
-	log.Printf("Crawling r/%s...", subreddit)
+	log.Printf("Crawling r/%s for problems, ideas, and products...", subreddit)
 	posts, err := c.redditClient.FetchPosts(ctx, subreddit, c.config.Crawler.PostLimit)
 	if err != nil {
 		log.Printf("Error fetching posts from r/%s: %v", subreddit, err)
@@ -75,52 +76,65 @@ func (c *Crawler) CrawlSubreddit(ctx context.Context, subreddit string) error {
 	}
 
 	for _, post := range posts {
-		existed, err := c.db.IdeaItemExists("reddit", post.ID)
+		existed, err := c.db.SourceItemExists("reddit", post.ID)
 		if err != nil {
-			log.Printf("Fail to check idea existed %v", err)
+			log.Printf("Fail to check source item existence %v", err)
 			continue
 		}
 
 		if existed {
-			log.Printf("Existed, ignore \n")
+			log.Printf("Source item already existed, ignoring: %s", post.Title)
 			continue
 		}
 
 		log.Printf("Found new post: %s", post.Title)
 
 		text := post.Title + "\n" + post.Content
-		result, err := c.analyzer.ExtractIdea(ctx, text)
+
+		analysisResult, err := c.analyzer.ExtractAnalysis(ctx, text)
 		if err != nil {
-			log.Printf("Fail to analyze the idea %v", err)
+			log.Printf("Failed to extract analysis from post: %v", err)
 			continue
 		}
 
-		if result.IsMeta {
-			log.Printf("Is meta %s", post.Title)
+		if analysisResult.IsMeta {
+			log.Printf("Post is meta, ignoring: %s", post.Title)
 			continue
 		}
 
-		embedding, err := analysis.GetEmbedding(ctx, result.Summarize)
+		isEmpty := analysisResult.Idea.Score == 0 && analysisResult.Problem.Score == 0 && len(analysisResult.Products) == 0
+		if isEmpty {
+			log.Printf("Empty post, ignore: %s", post.Title)
+			continue
+		}
+
+		embedding, err := embeddings.GenerateEmbedding(ctx, text)
 		if err != nil {
 			log.Printf("Failed to get embedding for item: %v", err)
 			continue
 		}
 
-		ideaItem := database.IdeaItem{
+		analysisResultBytes, err := json.Marshal(analysisResult)
+		if err != nil {
+			log.Printf("Failed to marshal analysis result: %v", err)
+			continue
+		}
+		analysisResultStr := string(analysisResultBytes)
+
+		sourceItem := database.SourceItem{
 			Source:          "reddit",
 			SourceItemID:    post.ID,
-			Title:           result.Summarize,
-			Content:         result.Content,
+			Title:           post.Title,
+			Content:         post.Content,
 			Author:          post.Author,
 			URL:             post.URL,
-			Score:           result.Score,
-			Categories:      strings.Join(result.Categories, ","),
-			ReferenceLinks:  strings.Join(result.ReferenceLinks, ","),
+			Score:           post.Score,
 			SourceCreatedAt: post.CreatedAt,
+			AnalysisResult:  analysisResultStr,
 		}
 
-		if err := c.db.CreateIdeaItem(&ideaItem, embedding); err != nil {
-			log.Printf("Fail to save idea item %v", err)
+		if err := c.db.CreateSourceItem(&sourceItem, embedding, analysisResultStr); err != nil {
+			log.Printf("Failed to save source item: %v", err)
 		}
 	}
 

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/letieu/idea-extractor/config"
@@ -15,104 +16,86 @@ type Analyzer struct {
 	model  string
 }
 
-type AnalyzeResponse struct {
-	Summarize      string   `json:"summarize"`
-	Content        string   `json:"content"`
-	Score          int      `json:"score"`
-	IsMeta         bool     `json:"is_meta"`
-	Categories     []string `json:"categories"`
-	ReferenceLinks []string `json:"reference_links"`
+type AnalysisResultProblem struct {
+	Title       string   `json:"title"`
+	Description string   `json:"description"`
+	PainPoints  []string `json:"pain_points"`
+	Score       int      `json:"score"`
+	Categories  []string `json:"categories"`
+}
+
+type AnalysisResultIdea struct {
+	Title       string   `json:"title"`
+	Description string   `json:"description"`
+	Features    []string `json:"features"`
+	Score       int      `json:"score"`
+	Categories  []string `json:"categories"`
+}
+
+type AnalysisResultProduct struct {
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	URL         string   `json:"url"`
+	Categories  []string `json:"categories"`
+}
+
+// AnalysisResult holds the structured output from the LLM after analyzing a post for problem, idea, and products.
+type AnalysisResult struct {
+	IsMeta   bool                    `json:"is_meta"`
+	Problem  AnalysisResultProblem   `json:"problem"`
+	Idea     AnalysisResultIdea      `json:"idea"`
+	Products []AnalysisResultProduct `json:"products"`
 }
 
 const PROMPT = `
-Analyze the following Reddit post or comment to determine if it contains a startup or business idea or a paint point that can be a idea.
+You will check a reddit post to find some data that can display on my 'IdeaDB' web site, my site will display some paint points, idea, start products, link between them, user can go to and see what is the potential problem, some good startup idea, or check another found work.
 
-Return the result in EXACTLY these 5 fields: summarize, content, score, is_meta, categories, reference_links
+Analyze the following text to identify and extract three types of entities: Problem, Idea, and Products. Also, identify any links between them.
 
-Your output MUST be suitable for displaying in a public startup idea database.  
-Do NOT mention brand names, product names, company names, real founders, personal stories, or any identifiable details.  
-Rewrite the idea in a clean, neutral, product-agnostic format.
+Return the result in a JSON object with these fields: "problem", "idea", "products", "is_meta".
 
----
+- **Problem**: 1 User pain points or unmet needs. (Can be a start point to create a saas, bussiness from this problem, if it is some random problem that don't good to display in 'problem hub for startup founder', don't grab it).
+- **Idea**: 1 Potential solutions to problem.
+- **Products**: Existing implementations of idea (startups, projects).
 
-## 1. Meta-post detection (IMPORTANT)
-If the text is a meta-post such as:
-- “Share what you’re building…”
-- “What are you working on?”
-- “Show your project”
-- “Share your startup idea”
-- “Post your ideas here”
-- Weekly / open threads asking people to submit ideas
-
-Then return:
-
-- summarize = "This is a meta-post inviting others to share ideas."
-- content = "This post does not contain an idea. The crawler should analyze comments instead."
-- score = 0
-- is_meta = true
-- categories = [] 
-- reference_links = []
-
-Do NOT treat these as startup ideas.
+Your output MUST be suitable for a public database. Do NOT mention brand names, company names, or personal details unless it's a product name.
 
 ---
 
-## 2. Normal idea detection
-If the post contains a startup or business idea, rewrite it cleanly:
+## 1. Entity Extraction
+Analyze the text and populate the "problem" and "idea" as objects, and "products" as an array.
 
-### summarize
-- A short 1–2 sentence summary of the idea.
-- Must NOT include brand names or personal details.
-- Must describe the idea itself, not the Reddit post context.
-- Example: “A mobile-first personal CRM that helps users maintain relationships using location-based context.”
+### For Problem:
+- **title**: A concise summary of the core problem.
+- **description**: A clear explanation of the problem, who has it, and its consequences (In well markdown format, with heading).
+- **pain_points**: 2-5 specific user pain points.
+- **score**: Score of the problem in realword, can profit, 0-100
+- **categories**: Categories of problem, in array format.
 
-### content
-A clear, in markdown format, should easy to understand, rewritten explanation including:
-- the problem  
-- target users  
-- the solution  
-- how it might work  
-- possible monetization  
-- why it could be useful  
+### For Idea:
+- **title**: A concise summary of the solution.
+- **description**: A clear explanation of the idea, how it works, and its potential (In well markdown format, with heading).
+- **features**: 2-5 key features of the proposed solution.
+- **score**: Score of the idea in realword, can profit, 0-100
+- **categories**: Categories of idea, in array format.
 
-All rewritten in a polished, idea-hub-friendly way.
-Exclude:
-- founder stories  
-- personal hacks or life events  
-- real brand/product names  
-- anything irrelevant to the idea itself  
-
-### categories
-In array format
-Return 2–4 idea categories such as:
-SaaS, AI, Productivity, Developer Tools, Fintech, Web3, Marketplaces, Health, EduTech, E-commerce, etc.
-
-### is_meta = false
-
-### reference_links
-In array format
-If post contains any product link
+### For each Product:
+- **name**: The name of the product or startup.
+- **description**: A brief description of what the product does. (In well markdown format, with heading).
+- **url**: The URL of the product, if available.
+- **categories**: Categories of product, in array format.
 
 ---
 
-## 3. Scoring rules (strict)
-Score the idea from 0–100 based on quality:
-
-- **0–25** = Very weak / vague / tiny audience  
-- **26–50** = Basic or average idea; limited users or unclear value  
-- **51–75** = Good idea with clear demand  
-- **76–90** = Strong, scalable idea  
-- **91–100** = Exceptional and rare  
-
-Be realistic and strict.  
-Do NOT give high scores to simple, niche, copycat, or unclear concepts.
+## 2. Meta-post detection
+If the text is a meta-post (e.g., "Share your project"), set "is_meta" to true and leave the other arrays empty.
 
 ---
 
-## 4. Output expectations
-All output should be clean, professional, rewritten, and ready to be displayed in “Idea Hub”.  
-Make sure that "content" should well format in Markdown, with title, good level render (##, ### ....)
-Do NOT merely summarize the Reddit post — transform it into a standalone startup idea description.
+## Output Expectations
+- The final output must be a single JSON object.
+- If no entities of a certain type are found, the idea or problem should have score is 0, for the products, it should empty array.
+- categories should be 2 -> 5 item, in this list: [technology, healthcare, finance, education, e-commerce, productivity, communication, entertainment, travel, food-beverage, fitness, real-estate, transportation, automotive, fashion, beauty, home-garden, pets, sports, gaming, music, art-design, photography, legal, hr-recruiting, marketing, sales, customer-service, analytics, security, sustainability, social-media, ai-ml, iot, blockchain, saas, mobile, web, hardware, infrastructure]
 `
 
 func New(ctx context.Context, cnf config.Config) (*Analyzer, error) {
@@ -155,8 +138,8 @@ type MistralChatResponse struct {
 	} `json:"choices"`
 }
 
-func (a *Analyzer) ExtractIdea(ctx context.Context, text string) (*AnalyzeResponse, error) {
-	prompt := PROMPT + "\n\nIdea:\n" + text
+func (a *Analyzer) ExtractAnalysis(ctx context.Context, text string) (*AnalysisResult, error) {
+	prompt := PROMPT + "\n\nPost:\n" + text
 
 	reqBody := MistralChatRequest{
 		Model: a.model,
@@ -166,31 +149,56 @@ func (a *Analyzer) ExtractIdea(ctx context.Context, text string) (*AnalyzeRespon
 		ResponseFormat: &MistralResponseFormat{
 			Type: "json_object",
 			JSONSchema: MistralJSONSchema{
-				Name: "idea_analysis",
+				Name: "entity_analysis",
 				Schema: map[string]any{
 					"type":     "object",
-					"required": []string{"summarize", "content", "score", "is_meta", "categories", "reference_links"},
+					"required": []string{"problem", "idea", "products", "is_meta"},
 					"properties": map[string]any{
-						"summarize": map[string]any{
-							"type": "string",
+						"problem": map[string]any{
+							"type":     "object",
+							"required": []string{"title", "description", "pain_points", "score", "categories"},
+							"properties": map[string]any{
+								"title":       map[string]any{"type": "string"},
+								"description": map[string]any{"type": "string"},
+								"pain_points": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+								"score":       map[string]any{"type": "integer"},
+								"categories": map[string]any{
+									"type":  "array",
+									"items": map[string]any{"type": "string"},
+								},
+							},
 						},
-						"content": map[string]any{
-							"type": "string",
+						"idea": map[string]any{
+							"type":     "object",
+							"required": []string{"title", "description", "features", "score", "categories"},
+							"properties": map[string]any{
+								"title":       map[string]any{"type": "string"},
+								"description": map[string]any{"type": "string"},
+								"features":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+								"score":       map[string]any{"type": "integer"},
+								"categories": map[string]any{
+									"type":  "array",
+									"items": map[string]any{"type": "string"},
+								},
+							},
 						},
-						"score": map[string]any{
-							"type": "integer",
+						"products": map[string]any{
+							"type": "array",
+							"items": map[string]any{
+								"type":     "object",
+								"required": []string{"name", "description", "url"},
+								"properties": map[string]any{
+									"name":        map[string]any{"type": "string"},
+									"description": map[string]any{"type": "string"},
+									"url":         map[string]any{"type": "string"},
+									"categories": map[string]any{
+										"type":  "array",
+										"items": map[string]any{"type": "string"},
+									},
+								},
+							},
 						},
-						"is_meta": map[string]any{
-							"type": "boolean",
-						},
-						"categories": map[string]any{
-							"type":  "array",
-							"items": map[string]any{"type": "string"},
-						},
-						"reference_links": map[string]any{
-							"type":  "array",
-							"items": map[string]any{"type": "string"},
-						},
+						"is_meta": map[string]any{"type": "boolean"},
 					},
 				},
 				Strict: true,
@@ -236,12 +244,13 @@ func (a *Analyzer) ExtractIdea(ctx context.Context, text string) (*AnalyzeRespon
 		return nil, fmt.Errorf("no choices in response")
 	}
 
-	var idea AnalyzeResponse
-	if err := json.Unmarshal([]byte(mistralResp.Choices[0].Message.Content), &idea); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal idea: %w", err)
+	var analysis AnalysisResult
+	if err := json.Unmarshal([]byte(mistralResp.Choices[0].Message.Content), &analysis); err != nil {
+		log.Printf("%s", mistralResp.Choices[0].Message.Content)
+		return nil, fmt.Errorf("failed to unmarshal analysis: %w", err)
 	}
 
-	return &idea, nil
+	return &analysis, nil
 }
 
 type OllamaEmbeddingRequest struct {

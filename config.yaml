@@ -8,17 +8,19 @@ mistral:
 
 database:
   type: sqlite
-  dbname: ../idea-hub/data/app.db
+  dbname: ../ideadb-web/ideadb.db
 
 crawler:
   subreddits:
     - SideProject
-    # - Entrepreneur
-    # - startups
+    - Entrepreneur
+    - problems
+    # - smallbusiness
+    - startups
     # - Business_Ideas
     # - roastmystartup
     # - buildinpublic
-  post_limit: 25
+  post_limit: 10
   rate_limit_secs: 2
   sharing_keywords:
     - "share what you're building"

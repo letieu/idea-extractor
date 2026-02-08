@@ -13,7 +13,7 @@ type Config struct {
 	}
 	Mistral struct {
 		APIKey string
-		Model string
+		Model  string
 	}
 	Database struct {
 		Host     string
