@@ -16,12 +16,8 @@ type Config struct {
 		Model  string
 	}
 	Database struct {
-		Host     string
-		Port     string
-		User     string
-		Password string
-		DBName   string
-		Type     string // "postgres" or "sqlite"
+		Url   string
+		Token string
 	}
 	Crawler struct {
 		Subreddits      []string
@@ -62,12 +58,8 @@ func Load() (*Config, error) {
 	cfg.Mistral.Model = v.GetString("mistral.model")
 
 	// Database config
-	cfg.Database.Type = v.GetString("database.type")
-	cfg.Database.Host = v.GetString("database.host")
-	cfg.Database.Port = v.GetString("database.port")
-	cfg.Database.User = v.GetString("database.user")
-	cfg.Database.Password = v.GetString("database.password")
-	cfg.Database.DBName = v.GetString("database.dbname")
+	cfg.Database.Url = v.GetString("database.url")
+	cfg.Database.Token = v.GetString("database.token")
 
 	// Crawler config
 	cfg.Crawler.Subreddits = v.GetStringSlice("crawler.subreddits")
@@ -121,8 +113,8 @@ func validate(cfg *Config) error {
 	if cfg.Mistral.APIKey == "" {
 		return fmt.Errorf("mistral.api_key is required")
 	}
-	if cfg.Database.DBName == "" {
-		return fmt.Errorf("database.dbname is required")
+	if cfg.Database.Url == "" {
+		return fmt.Errorf("database.url is required")
 	}
 	return nil
 }

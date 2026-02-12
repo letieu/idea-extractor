@@ -4,8 +4,7 @@ import "time"
 
 // Problem represents an identified user problem or unmet need.
 type Problem struct {
-	IntID       int       `json:"int_id" bson:"int_id"` // Auto-incrementing integer primary key for sqlite-vec
-	ID          string    `json:"id" bson:"_id"`        // UUID
+	ID          int       `json:"id" bson:"_id"`
 	Slug        string    `json:"slug" bson:"slug"`
 	Title       string    `json:"title" bson:"title"`
 	Description string    `json:"description" bson:"description"`
@@ -19,7 +18,7 @@ type Problem struct {
 
 // Idea represents a potential solution to a problem.
 type Idea struct {
-	ID          string    `json:"id" bson:"_id"` // UUID
+	ID          int       `json:"id" bson:"_id"`
 	Slug        string    `json:"slug" bson:"slug"`
 	Title       string    `json:"title" bson:"title"`
 	Description string    `json:"description" bson:"description"`
@@ -32,7 +31,7 @@ type Idea struct {
 
 // Product represents an existing implementation of an idea.
 type Product struct {
-	ID          string    `json:"id" bson:"_id"` // UUID
+	ID          int       `json:"id" bson:"_id"`
 	Slug        string    `json:"slug" bson:"slug"`
 	Name        string    `json:"name" bson:"name"`
 	Description string    `json:"description" bson:"description"`

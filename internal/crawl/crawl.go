@@ -8,7 +8,6 @@ import (
 	"github.com/letieu/idea-extractor/config"
 	"github.com/letieu/idea-extractor/internal/analysis"
 	"github.com/letieu/idea-extractor/internal/database"
-	"github.com/letieu/idea-extractor/internal/embeddings"
 	"github.com/letieu/idea-extractor/internal/reddit"
 )
 
@@ -21,7 +20,7 @@ type Crawler struct {
 
 type CrawlerStore interface {
 	SourceItemExists(source string, sourceItemID string) (bool, error)
-	CreateSourceItem(item *database.SourceItem, embedding []float32, analysisResult string) error
+	CreateSourceItem(item *database.SourceItem, analysisResult string) error
 	Close() error
 }
 
@@ -108,12 +107,6 @@ func (c *Crawler) CrawlSubreddit(ctx context.Context, subreddit string) error {
 			continue
 		}
 
-		embedding, err := embeddings.GenerateEmbedding(ctx, text)
-		if err != nil {
-			log.Printf("Failed to get embedding for item: %v", err)
-			continue
-		}
-
 		analysisResultBytes, err := json.Marshal(analysisResult)
 		if err != nil {
 			log.Printf("Failed to marshal analysis result: %v", err)
@@ -133,7 +126,7 @@ func (c *Crawler) CrawlSubreddit(ctx context.Context, subreddit string) error {
 			AnalysisResult:  analysisResultStr,
 		}
 
-		if err := c.db.CreateSourceItem(&sourceItem, embedding, analysisResultStr); err != nil {
+		if err := c.db.CreateSourceItem(&sourceItem, analysisResultStr); err != nil {
 			log.Printf("Failed to save source item: %v", err)
 		}
 	}

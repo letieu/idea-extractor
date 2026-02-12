@@ -7,19 +7,19 @@ mistral:
   model: "mistral-medium-latest"
 
 database:
-  type: sqlite
-  dbname: ../ideadb-web/ideadb.db
+  url: libsql://ideadb-letieu.aws-us-east-1.turso.io
+  token: eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJnaWQiOiI5NjhkYzQ1NS02ZTZmLTQ1YzgtYTk2My03YjYxNDJjMjEyZWUiLCJpYXQiOjE3NzA1MzU4NTcsInJpZCI6IjU2Zjk3ODljLTJmN2MtNDhjYy1iYTVjLTcyZGEwNjE5YTMwZCJ9.CNTMwlmYy_8d1lSdbOMe_4X9Np8tQxEikMx0DeFvIiYvJCltMQMDiqiPl_mr3lCkWUgmX5PiEt_sfm0zHOOlAw
 
 crawler:
   subreddits:
     - SideProject
     - Entrepreneur
     - problems
-    # - smallbusiness
+    - smallbusiness
     - startups
-    # - Business_Ideas
-    # - roastmystartup
-    # - buildinpublic
+    - Business_Ideas
+    - roastmystartup
+    - buildinpublic
   post_limit: 10
   rate_limit_secs: 2
   sharing_keywords:

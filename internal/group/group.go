@@ -63,7 +63,7 @@ func (g *Groupper) ProcessSourceItems(ctx context.Context) error {
 			log.Printf("Failed to create idea: %v", err)
 		}
 
-		if problemId != "" && ideaId != "" {
+		if problemId != 0 && ideaId != 0 {
 			g.db.CreateProblemIdea(problemId, ideaId)
 		}
 
@@ -72,8 +72,11 @@ func (g *Groupper) ProcessSourceItems(ctx context.Context) error {
 			if err != nil {
 				log.Printf("Failed to create product: %v", err)
 			}
-			if problemId != "" && productId != "" {
-				g.db.CreateProblemProduct(problemId, productId)
+			if problemId != 0 && productId != 0 {
+				g.db.LinkProblemProduct(problemId, productId)
+			}
+			if ideaId != 0 && productId != 0 {
+				g.db.LinkIdeaProduct(ideaId, productId)
 			}
 		}
 	}
@@ -82,9 +85,9 @@ func (g *Groupper) ProcessSourceItems(ctx context.Context) error {
 	return nil
 }
 
-func (g *Groupper) createProblem(ctx context.Context, sourcId int, p analysis.AnalysisResultProblem) (string, error) {
+func (g *Groupper) createProblem(ctx context.Context, sourcId int, p analysis.AnalysisResultProblem) (int, error) {
 	if p.Score == 0 {
-		return "", nil
+		return 0, nil
 	}
 
 	const problemSimilarityThreshold float32 = 0.2 // Adjust this value based on desired similarity
@@ -94,11 +97,11 @@ func (g *Groupper) createProblem(ctx context.Context, sourcId int, p analysis.An
 	embedding, err := embeddings.GenerateEmbedding(ctx, p.Title)
 	if err != nil {
 		log.Printf("Failed to generate embedding for problem '%s': %v", p.Title, err)
-		return "", err
+		return 0, err
 	}
 
 	// Check for similar problems
-	similarProblems, err := g.db.FindSimilarProblems(embedding, maxSimilarProblems, problemSimilarityThreshold)
+	similarProblems, err := g.db.FindSimilarProblems(embedding, maxSimilarProblems, 0.2)
 	if err != nil {
 		log.Printf("Failed to find similar problems for '%s': %v", p.Title, err)
 		// Continue to create new problem if similarity check fails
@@ -106,12 +109,11 @@ func (g *Groupper) createProblem(ctx context.Context, sourcId int, p analysis.An
 
 	log.Printf("Found %d similar problems", len(similarProblems))
 
-	var targetProblem *database.Problem
+	var problemId int
+
 	if len(similarProblems) > 0 {
-		targetProblem = similarProblems[0] // Use the most similar problem
-		log.Printf("Found similar problem (ID: %s) for '%s'. Linking to existing problem.", targetProblem.ID, p.Title)
-		log.Printf("New: %s, Old: %s", p.Title, targetProblem.Title)
-		log.Println("_____")
+		problemId = similarProblems[0].ID // Use the most similar problem
+		log.Printf("Found similar problem (ID: %d) for '%s'. >>> %s .", problemId, p.Title, similarProblems[0].Title)
 	} else {
 		problem := &database.Problem{
 			Title:       p.Title,
@@ -122,22 +124,23 @@ func (g *Groupper) createProblem(ctx context.Context, sourcId int, p analysis.An
 			CreatedAt:   time.Now(),
 			UpdatedAt:   time.Now(),
 			Slug:        CreateSlug(p.Title),
+			Embedding:   embedding,
 		}
 
 		// No similar problem found, create a new one
-		if err := g.db.CreateProblem(problem); err != nil {
+		problemId, err = g.db.CreateProblem(problem)
+		if err != nil {
 			log.Printf("Failed to create problem: %v", err)
-			return "", err
+			return 0, err
 		}
-		targetProblem = problem
-		log.Printf("Created new problem (ID: %s): '%s'", targetProblem.ID, problem.Title)
+		log.Printf("Created new problem ID: %d '%s'", problemId, problem.Title)
 	}
 
-	g.db.UpdateSourceItemProblemID([]int{sourcId}, targetProblem.ID)
-	return targetProblem.ID, nil
+	g.db.UpdateSourceItemProblemID([]int{sourcId}, problemId)
+	return problemId, nil
 }
 
-func (g *Groupper) createIdea(ctx context.Context, sourceId int, analysisResult analysis.AnalysisResultIdea) (string, error) {
+func (g *Groupper) createIdea(ctx context.Context, sourceId int, analysisResult analysis.AnalysisResultIdea) (int, error) {
 	idea := &database.Idea{
 		Title:       analysisResult.Title,
 		Description: analysisResult.Description,
@@ -148,14 +151,16 @@ func (g *Groupper) createIdea(ctx context.Context, sourceId int, analysisResult 
 		Categories:  analysisResult.Categories,
 		Slug:        CreateSlug(analysisResult.Title),
 	}
-	if err := g.db.CreateIdea(idea); err != nil {
-		return "", err
+
+	ideaId, err := g.db.CreateIdea(idea)
+	if err != nil {
+		return 0, err
 	}
-	g.db.UpdateSourceItemIdeaID([]int{sourceId}, idea.ID)
-	return idea.ID, nil
+	g.db.UpdateSourceItemIdeaID([]int{sourceId}, ideaId)
+	return ideaId, nil
 }
 
-func (g *Groupper) createProduct(ctx context.Context, sourceId int, analysisResult analysis.AnalysisResultProduct) (string, error) {
+func (g *Groupper) createProduct(ctx context.Context, sourceId int, analysisResult analysis.AnalysisResultProduct) (int, error) {
 	product := &database.Product{
 		Name:        analysisResult.Name,
 		Description: analysisResult.Description,
@@ -165,9 +170,13 @@ func (g *Groupper) createProduct(ctx context.Context, sourceId int, analysisResu
 		Categories:  analysisResult.Categories,
 		Slug:        CreateSlug(analysisResult.Name),
 	}
-	if err := g.db.CreateProduct(product); err != nil {
-		return "", err
+
+	productId, err := g.db.CreateProduct(product)
+	if err != nil {
+		return 0, err
 	}
-	g.db.UpdateSourceItemProductID([]int{sourceId}, product.ID)
-	return product.ID, nil
+
+	g.db.UpdateSourceItemProductID([]int{sourceId}, productId)
+
+	return productId, nil
 }

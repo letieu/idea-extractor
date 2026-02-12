@@ -3,14 +3,15 @@ module github.com/letieu/idea-extractor
 go 1.25.3
 
 require (
-	github.com/asg017/sqlite-vec-go-bindings v0.1.6
 	github.com/google/uuid v1.6.0
 	github.com/k0kubun/pp/v3 v3.5.0
-	github.com/mattn/go-sqlite3 v1.14.32
 	github.com/spf13/viper v1.21.0
+	github.com/tursodatabase/libsql-client-go v0.0.0-20251219100830-236aa1ff8acc
 )
 
 require (
+	github.com/antlr4-go/antlr/v4 v4.13.0 // indirect
+	github.com/coder/websocket v1.8.12 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
@@ -23,6 +24,7 @@ require (
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
+	golang.org/x/exp v0.0.0-20240325151524-a685a6edb6d8 // indirect
 	golang.org/x/sys v0.31.0 // indirect
 	golang.org/x/text v0.28.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
