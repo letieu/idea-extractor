@@ -1,0 +1,29 @@
+mistral:
+  api_key: "xx"
+  model: "xx"
+
+database:
+  url: aa
+  token: xx
+
+crawler:
+  subreddits:
+    - SideProject
+    - Entrepreneur
+    - problems
+    - smallbusiness
+    - startups
+    - Business_Ideas
+    - roastmystartup
+    - buildinpublic
+  post_limit: 10
+  rate_limit_secs: 2
+  sharing_keywords:
+    - "share what you're building"
+    - "share what you are building"
+    - "show off your project"
+    - "what are you working on"
+    - "showcase"
+    - "share your startup"
+    - "show your side project"
+    - "monthly self promotion"
