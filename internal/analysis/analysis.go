@@ -96,6 +96,7 @@ If the text is a meta-post (e.g., "Share your project"), set "is_meta" to true a
 - The final output must be a single JSON object.
 - If no entities of a certain type are found, the idea or problem should have score is 0, for the products, it should empty array.
 - categories should be 2 -> 5 item, in this list: [technology, healthcare, finance, education, e-commerce, productivity, communication, entertainment, travel, food-beverage, fitness, real-estate, transportation, automotive, fashion, beauty, home-garden, pets, sports, gaming, music, art-design, photography, legal, hr-recruiting, marketing, sales, customer-service, analytics, security, sustainability, social-media, ai-ml, iot, blockchain, saas, mobile, web, hardware, infrastructure]
+- DONT ALWAYS need 3 thing (problems, idea, product). If a post just have idea, it ok to return without any problem. And same for product, problem
 `
 
 func New(ctx context.Context, cnf config.Config) (*Analyzer, error) {
