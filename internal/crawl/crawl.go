@@ -43,7 +43,11 @@ func New(ctx context.Context) (*Crawler, error) {
 		return nil, err
 	}
 
-	redditClient := reddit.NewClient()
+	redditClient, err := reddit.NewClient()
+	if err != nil {
+		log.Fatal(err)
+		return nil, err
+	}
 
 	return &Crawler{
 		redditClient: redditClient,

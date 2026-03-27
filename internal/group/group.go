@@ -90,7 +90,7 @@ func (g *Groupper) createProblem(ctx context.Context, sourcId int, p analysis.An
 		return 0, nil
 	}
 
-	const problemSimilarityThreshold float32 = 0.2 // Adjust this value based on desired similarity
+	const problemSimilarityThreshold float32 = 0.1 // Adjust this value based on desired similarity
 	const maxSimilarProblems = 5                   // Number of similar problems to fetch
 
 	// Generate embedding for the problem
@@ -101,7 +101,7 @@ func (g *Groupper) createProblem(ctx context.Context, sourcId int, p analysis.An
 	}
 
 	// Check for similar problems
-	similarProblems, err := g.db.FindSimilarProblems(embedding, maxSimilarProblems, 0.2)
+	similarProblems, err := g.db.FindSimilarProblems(embedding, maxSimilarProblems, problemSimilarityThreshold)
 	if err != nil {
 		log.Printf("Failed to find similar problems for '%s': %v", p.Title, err)
 		// Continue to create new problem if similarity check fails

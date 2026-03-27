@@ -17,7 +17,7 @@ crawler:
     - roastmystartup
     - buildinpublic
   post_limit: 10
-  rate_limit_secs: 2
+  rate_limit_secs: 10
   sharing_keywords:
     - "share what you're building"
     - "share what you are building"

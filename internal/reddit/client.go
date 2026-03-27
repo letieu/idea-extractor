@@ -5,12 +5,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"time"
+
+	fhttp "github.com/bogdanfinn/fhttp"
+	tls_client "github.com/bogdanfinn/tls-client"
+	"github.com/bogdanfinn/tls-client/profiles"
 )
 
 type RedditClient struct {
-	httpClient *http.Client
+	httpClient tls_client.HttpClient
 	userAgent  string
 }
 
@@ -47,11 +50,21 @@ type redditPost struct {
 }
 
 // NewClient using public Reddit API
-func NewClient() *RedditClient {
-	return &RedditClient{
-		httpClient: &http.Client{Timeout: 20 * time.Second},
-		userAgent:  "linux:reddit-idea-crawler:v1.0.0 (by /u/tieu_le_dev)",
+func NewClient() (*RedditClient, error) {
+	options := []tls_client.HttpClientOption{
+		tls_client.WithTimeoutSeconds(30),
+		tls_client.WithClientProfile(profiles.Chrome_120),
+		tls_client.WithNotFollowRedirects(),
 	}
+	client, err := tls_client.NewHttpClient(tls_client.NewNoopLogger(), options...)
+	if err != nil {
+		return nil, err
+	}
+
+	return &RedditClient{
+		httpClient: client,
+		userAgent:  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+	}, nil
 }
 
 // Fetch subreddit posts using public JSON
@@ -61,7 +74,10 @@ func (r *RedditClient) FetchPosts(ctx context.Context, subreddit string, limit i
 		subreddit, limit,
 	)
 
-	req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
+	req, err := fhttp.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
 	req.Header.Set("User-Agent", r.userAgent)
 
 	resp, err := r.httpClient.Do(req)
@@ -90,7 +106,7 @@ func (r *RedditClient) FetchPosts(ctx context.Context, subreddit string, limit i
 			Author:    p.Author,
 			Subreddit: p.Subreddit,
 			URL:       "https://reddit.com" + p.Permalink,
-			Score:     p.Score, // Add this line
+			Score:     p.Score,
 			CreatedAt: time.Unix(int64(p.CreatedUTC), 0),
 		})
 	}
@@ -105,7 +121,10 @@ func (r *RedditClient) FetchComments(ctx context.Context, subreddit, postID stri
 		subreddit, postID,
 	)
 
-	req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
+	req, err := fhttp.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
 	req.Header.Set("User-Agent", r.userAgent)
 
 	resp, err := r.httpClient.Do(req)
@@ -139,12 +158,12 @@ func (r *RedditClient) FetchComments(ctx context.Context, subreddit, postID stri
 
 		comments = append(comments, &Post{
 			ID:        p.ID,
-			Title:     "", // optional
+			Title:     "",
 			Content:   p.Body,
 			Author:    p.Author,
 			Subreddit: subreddit,
 			URL:       "https://reddit.com" + p.Permalink,
-			Score:     0, // Set score to 0 for comments, or retrieve if available in redditPost for comments
+			Score:     0,
 			CreatedAt: time.Unix(int64(p.CreatedUTC), 0),
 		})
 	}
