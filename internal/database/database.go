@@ -70,7 +70,7 @@ func (db *DB) CreateProblem(problem *Problem) (int, error) {
 	for _, category := range problem.Categories {
 		_, err := tx.Exec(`INSERT INTO problem_categories (problem_id, category_slug) VALUES (?, ?)`, insertedID, category)
 		if err != nil {
-			return 0, fmt.Errorf("failed to insert problem category: %w", err)
+			return 0, fmt.Errorf("failed to insert problem category: %w, cate: %s", err, category)
 		}
 	}
 
